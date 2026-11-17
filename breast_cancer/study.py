@@ -159,6 +159,26 @@ def evaluate(days, event, assignment, scores, seed, repeats):
     return report
 
 
+def load_inputs(directory, endpoint, kind):
+    cohort = table(directory / "cohort.csv").sort_index()
+    if kind == "real" and (not cohort.index.str.fullmatch(r"TCGA-[A-Z0-9]{2}-[A-Z0-9]{4}").all() or cohort.index.str.startswith("TCGA-ZZ-").any()):
+        raise ValueError("Expected real TCGA patient IDs")
+    days = cohort[f"{endpoint}_days"].to_numpy(float)
+    event = cohort[f"{endpoint}_event"].to_numpy(float)
+    if not np.isfinite(days).all() or (days <= 0).any() or not np.isin(event, [0, 1]).all():
+        raise ValueError("Expected positive finite times and binary events")
+    event = event.astype(int)
+    tables = {"clinical": cohort[["age", "race", "tumour_stage"]].copy()}
+    for name in ("race", "tumour_stage"):
+        tables["clinical"][name] = tables["clinical"][name].fillna("missing")
+    for name in ("rna", "wsi"):
+        tables[name] = table(directory / f"{name}.csv").reindex(cohort.index)
+        values = tables[name].to_numpy(float)
+        if not values.shape[1] or not np.isfinite(values).all() or (name == "rna" and (values < 0).any()):
+            raise ValueError(f"Incomplete or invalid {name} features")
+    return cohort, days, event, tables
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inputs", required=True, type=Path)
@@ -174,22 +194,7 @@ def main():
     args = parser.parse_args()
     if min(args.features, args.hidden, args.bootstrap) < 1:
         parser.error("Feature, hidden-unit and bootstrap counts must be positive")
-    cohort = table(args.inputs / "cohort.csv").sort_index()
-    if args.kind == "real" and (not cohort.index.str.fullmatch(r"TCGA-[A-Z0-9]{2}-[A-Z0-9]{4}").all() or cohort.index.str.startswith("TCGA-ZZ-").any()):
-        raise ValueError("Expected real TCGA patient IDs")
-    days = cohort[f"{args.endpoint}_days"].to_numpy(float)
-    event = cohort[f"{args.endpoint}_event"].to_numpy(float)
-    if not np.isfinite(days).all() or (days <= 0).any() or not np.isin(event, [0, 1]).all():
-        raise ValueError("Expected positive finite times and binary events")
-    event = event.astype(int)
-    tables = {"clinical": cohort[["age", "race", "tumour_stage"]].copy()}
-    for name in ("race", "tumour_stage"):
-        tables["clinical"][name] = tables["clinical"][name].fillna("missing")
-    for name in ("rna", "wsi"):
-        tables[name] = table(args.inputs / f"{name}.csv").reindex(cohort.index)
-        values = tables[name].to_numpy(float)
-        if not values.shape[1] or not np.isfinite(values).all() or (name == "rna" and (values < 0).any()):
-            raise ValueError(f"Incomplete or invalid {name} features")
+    cohort, days, event, tables = load_inputs(args.inputs, args.endpoint, args.kind)
     report = {"kind": args.kind, "endpoint": args.endpoint, "patients": len(days),
               "events": int(event.sum()), "outer_folds": args.folds, "inner_folds": args.inner,
               "interval_scope": "Conditional patient bootstrap on fixed out-of-fold predictions",
