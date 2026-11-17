@@ -31,3 +31,11 @@ Previous project evidence:
 - The larger cohort run, native patch attention benchmarking and independent cohort validation require completion and verification. This repository currently implements the mean-pooled embedding benchmark. The prediction tool is deferred.
 
 Before claiming external validation, establish compatible endpoint definitions, collection times, RNA assay preprocessing and slide feature extraction in an independent cohort. Consider CPTAC-BRCA as a candidate after verifying those requirements. Report cohort flow and follow [TRIPOD+AI](https://www.bmj.com/content/385/bmj-2023-078378). Acknowledge the TCGA Research Network and the data and feature providers.
+
+To evaluate a harmonized independent cohort, use the same three input filenames and feature definitions in both directories. Physically independent enrollment, outcome harmonization and assay compatibility must be verified before running.
+
+```sh
+python -m breast_cancer.external --development outputs/real --external data/external --endpoint pfi --output outputs/external/metrics.json
+```
+
+The command fits the clinical Cox, early-fusion and late-fusion models only on the development patients. It reports external concordance and comparable-pair counts. External outcome labels are used for scoring. Confirm event counts and follow-up support before interpreting the estimates.
